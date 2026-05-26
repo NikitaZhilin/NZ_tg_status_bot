@@ -1,0 +1,23 @@
+name: nz_tg_status_bot
+
+services:
+  status-bot:
+    build: .
+    container_name: nz_tg_status_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ${INCUBATOR_DATABASE_HOST_PATH:-./data/missing-incubator.db}:${INCUBATOR_DATABASE_CONTAINER_PATH:-/external/incubator.db}:ro
+    environment:
+      INCUBATOR_DATABASE_PATH: ${INCUBATOR_DATABASE_CONTAINER_PATH:-/external/incubator.db}
+      STATUS_DB_PATH: /app/data/status_bot.db
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sqlite3, os; p=os.getenv('STATUS_DB_PATH','/app/data/status_bot.db'); sqlite3.connect(p).execute('select 1').fetchone()"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+

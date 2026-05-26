@@ -1,0 +1,2 @@
+"""NZ Telegram status bot."""
+
