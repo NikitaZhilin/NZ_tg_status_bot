@@ -32,6 +32,7 @@ jobs:
           required=(
             VPS_HOST
             VPS_USER
+            VPS_SSH_KEY
             BOT_TOKEN
             ADMIN_IDS
             REMEMBERME_API_BASE_URL
