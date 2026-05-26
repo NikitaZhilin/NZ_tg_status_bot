@@ -1,10 +1,10 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [string]$Repo = "NikitaZhilin/NZ_tg_status_bot",
     [string]$SshKeyPath = "",
     [switch]$GenerateDeployKey
 )
+
+$ErrorActionPreference = "Stop"
 
 function Read-RequiredSecret([string]$Name, [string]$Prompt) {
     $Value = Read-Host -Prompt $Prompt

@@ -1,8 +1,8 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [string]$KeyPath = (Join-Path $env:USERPROFILE ".ssh\nz_tg_status_bot_deploy_ed25519")
 )
+
+$ErrorActionPreference = "Stop"
 
 if (Test-Path -LiteralPath $KeyPath) {
     Write-Host "Deploy key already exists: $KeyPath"
@@ -19,4 +19,3 @@ Write-Host ""
 Write-Host "Public key. Add this line to VPS ~/.ssh/authorized_keys for the deploy user:"
 Write-Host ""
 Get-Content -LiteralPath "$KeyPath.pub" -Raw
-
