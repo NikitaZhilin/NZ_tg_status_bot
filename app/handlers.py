@@ -63,6 +63,9 @@ def status_inline_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Отчёт 24ч", callback_data="refresh:report"),
                 InlineKeyboardButton(text="Отчёт 7д", callback_data="refresh:report7d"),
             ],
+            [
+                InlineKeyboardButton(text="Перезапустить RememberMe", callback_data="restart_ask:rememberme"),
+            ],
         ]
     )
 
@@ -342,6 +345,18 @@ async def restart_target_callback(callback: CallbackQuery, settings: Settings) -
         await callback.message.answer(result.message)
 
 
+@router.callback_query(F.data.startswith("restart_ask:"))
+async def restart_ask_callback(callback: CallbackQuery, settings: Settings) -> None:
+    if not callback.from_user or callback.from_user.id not in settings.admin_id_set:
+        await callback.answer("Доступ запрещен.", show_alert=True)
+        return
+    bot_key = (callback.data or "").split(":", 1)[1]
+    target_name = {"rememberme": "RememberMe", "incubator": "Инкубатор"}.get(bot_key, bot_key)
+    await callback.answer()
+    if callback.message:
+        await _send_target_restart_prompt(callback.message, settings, bot_key, target_name)
+
+
 @router.callback_query(F.data.startswith("alert:"))
 async def alert_callback(
     callback: CallbackQuery,
@@ -401,6 +416,10 @@ async def _ask_target_restart(message: Message, settings: Settings, bot_key: str
     if not is_admin(message, settings):
         await message.answer("Доступ запрещен.")
         return
+    await _send_target_restart_prompt(message, settings, bot_key, title)
+
+
+async def _send_target_restart_prompt(message: Message, settings: Settings, bot_key: str, title: str) -> None:
     restart_target = RestartService(settings).target_for(bot_key)
     if not restart_target or not restart_target.url:
         await message.answer(
