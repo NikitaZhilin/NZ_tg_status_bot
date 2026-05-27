@@ -8,6 +8,7 @@ import app.diagnostics as diagnostics
 
 class RestartHistorySettings:
     restart_history_limit = 10
+    bot_timezone = "Europe/Moscow"
 
     def __init__(self, paths: list) -> None:
         self.restart_request_path_list = paths
@@ -53,6 +54,7 @@ def test_restart_history_shows_processed_request(monkeypatch) -> None:
     text = diagnostics.format_restart_history(RestartHistorySettings([FakePath("/external/restarts/rememberme")]))
 
     assert "История перезапусков:" in text
+    assert "28.05.2026 13:00:00" in text
     assert "RememberMe: обработано" in text
     assert "target=all" in text
     assert "rememberme-20260528-test" in text

@@ -6,6 +6,7 @@ import re
 import socket
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import psutil
 
@@ -207,12 +208,13 @@ def format_restart_history(settings: Settings) -> str:
         )
         if created_at is None:
             created_at = datetime.fromtimestamp(entry["mtime"], timezone.utc)
+        display_timezone = _display_timezone(getattr(settings, "bot_timezone", "Europe/Moscow"))
         operation_id = payload.get("operation_id") or _clean_restart_operation_id(entry["path"].stem)
         target = payload.get("target") or "-"
         requested_by = payload.get("requested_by") or "-"
         reason = payload.get("reason") or ""
         lines.append(
-            f"- {created_at.astimezone().strftime('%d.%m.%Y %H:%M:%S')} "
+            f"- {created_at.astimezone(display_timezone).strftime('%d.%m.%Y %H:%M:%S')} "
             f"{entry['bot']}: {entry['state']}, target={target}, id={operation_id}, от={requested_by}"
         )
         if reason:
@@ -268,6 +270,13 @@ def _clean_restart_operation_id(value: str) -> str:
     if len(parts) == 3 and parts[0].isdigit():
         return parts[2]
     return value
+
+
+def _display_timezone(timezone_name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("Europe/Moscow")
 
 
 def _read_tail(path: Path, max_bytes: int) -> str:
