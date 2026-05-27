@@ -19,6 +19,7 @@ from app.formatters import (
     format_server_details,
     format_status_summary,
 )
+from app.restarts import RestartService
 from app.status_manager import StatusManager
 from app.storage import StatusStorage
 
@@ -52,7 +53,8 @@ def status_inline_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="История", callback_data="refresh:history"),
-                InlineKeyboardButton(text="Отчёт", callback_data="refresh:report"),
+                InlineKeyboardButton(text="Отчёт 24ч", callback_data="refresh:report"),
+                InlineKeyboardButton(text="Отчёт 7д", callback_data="refresh:report7d"),
             ],
         ]
     )
@@ -164,6 +166,14 @@ async def report(message: Message, settings: Settings, storage: StatusStorage) -
     await message.answer(_report_text(storage), reply_markup=status_inline_keyboard())
 
 
+@router.message(Command("report7d"))
+async def report_7d(message: Message, settings: Settings, storage: StatusStorage) -> None:
+    if not is_admin(message, settings):
+        await message.answer("Доступ запрещен.")
+        return
+    await message.answer(_report_text(storage, hours=24 * 7), reply_markup=status_inline_keyboard())
+
+
 @router.message(Command("top"))
 async def top(message: Message, settings: Settings) -> None:
     if not is_admin(message, settings):
@@ -223,6 +233,16 @@ async def restart_status_bot(message: Message, settings: Settings) -> None:
     )
 
 
+@router.message(Command("restart_rememberme"))
+async def restart_rememberme(message: Message, settings: Settings) -> None:
+    await _ask_target_restart(message, settings, "rememberme", "RememberMe")
+
+
+@router.message(Command("restart_incubator"))
+async def restart_incubator(message: Message, settings: Settings) -> None:
+    await _ask_target_restart(message, settings, "incubator", "Инкубатор")
+
+
 @router.callback_query(F.data.startswith("refresh:"))
 async def refresh_callback(
     callback: CallbackQuery,
@@ -249,6 +269,8 @@ async def refresh_callback(
         text = _history_text(storage)
     elif action == "report":
         text = _report_text(storage)
+    elif action == "report7d":
+        text = _report_text(storage, hours=24 * 7)
     else:
         text = format_status_summary(snapshot.bots, snapshot.server)
     if callback.message:
@@ -271,6 +293,31 @@ async def restart_callback(callback: CallbackQuery, settings: Settings) -> None:
         if callback.message:
             await callback.message.answer("Статус-бот перезапускается. Через несколько секунд он снова будет доступен.")
         asyncio.create_task(_exit_for_restart())
+
+
+@router.callback_query(F.data.startswith("restart_target:"))
+async def restart_target_callback(callback: CallbackQuery, settings: Settings) -> None:
+    if not callback.from_user or callback.from_user.id not in settings.admin_id_set:
+        await callback.answer("Доступ запрещен.", show_alert=True)
+        return
+    parts = (callback.data or "").split(":")
+    if len(parts) != 3:
+        await callback.answer()
+        return
+    _, bot_key, action = parts
+    target_name = {"rememberme": "RememberMe", "incubator": "Инкубатор"}.get(bot_key, bot_key)
+    if action == "cancel":
+        await callback.answer("Отменено.")
+        if callback.message:
+            await callback.message.answer(f"Перезапуск {target_name} отменён.")
+        return
+    if action != "confirm":
+        await callback.answer()
+        return
+    await callback.answer(f"Отправляю запрос на перезапуск {target_name}...")
+    result = await RestartService(settings).request_restart(bot_key, callback.from_user.id)
+    if callback.message:
+        await callback.message.answer(result.message)
 
 
 @router.callback_query(F.data.startswith("alert:"))
@@ -328,15 +375,41 @@ def _history_text(storage: StatusStorage) -> str:
     )
 
 
-def _report_text(storage: StatusStorage) -> str:
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
+async def _ask_target_restart(message: Message, settings: Settings, bot_key: str, title: str) -> None:
+    if not is_admin(message, settings):
+        await message.answer("Доступ запрещен.")
+        return
+    restart_target = RestartService(settings).target_for(bot_key)
+    if not restart_target or not restart_target.url:
+        await message.answer(
+            f"{title}: перезапуск пока не подключён.\n"
+            "Нужно, чтобы целевой бот реализовал POST /admin/restart и чтобы URL был добавлен в .env статус-бота."
+        )
+        return
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=f"Да, перезапустить {title}", callback_data=f"restart_target:{bot_key}:confirm"),
+                InlineKeyboardButton(text="Отмена", callback_data=f"restart_target:{bot_key}:cancel"),
+            ]
+        ]
+    )
+    await message.answer(
+        f"Перезапустить {title}?\n"
+        "Команда будет отправлена только в endpoint этого бота. Другие сервисы статус-бот не трогает.",
+        reply_markup=keyboard,
+    )
+
+
+def _report_text(storage: StatusStorage, *, hours: int = 24) -> str:
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
     return format_report(
         {
             "rememberme": storage.snapshots_since("rememberme", since),
             "incubator": storage.snapshots_since("incubator", since),
             "server": storage.snapshots_since("server", since),
         },
-        hours=24,
+        hours=hours,
     )
 
 

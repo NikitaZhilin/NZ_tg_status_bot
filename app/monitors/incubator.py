@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import aiosqlite
+import httpx
 
 from app.config import Settings
 from app.monitors.process_checks import check_docker_container, check_pid_file, check_systemd_unit
@@ -23,6 +24,11 @@ class IncubatorMonitor:
 
         components: list[ComponentStatus] = []
         metrics: dict = {}
+        if self.settings.incubator_api_base_url and self.settings.incubator_admin_token:
+            service_component, service_metrics = await self._check_service_status()
+            components.append(service_component)
+            metrics.update(service_metrics)
+
         db_component, db_metrics = await self._check_database(self.settings.incubator_database_path)
         components.append(db_component)
         metrics.update(db_metrics)
@@ -74,6 +80,46 @@ class IncubatorMonitor:
                 metrics,
             )
         return ComponentStatus("sqlite", Status.OK, "Database is readable", {"tables": tables}, required=True), metrics
+
+    async def _check_service_status(self) -> tuple[ComponentStatus, dict]:
+        url = f"{self.settings.incubator_api_base_url.rstrip('/')}/admin/service-status"
+        headers = {"X-Admin-Token": self.settings.incubator_admin_token}
+        timeout = httpx.Timeout(self.settings.incubator_timeout_seconds)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(url, headers=headers)
+        except httpx.TimeoutException:
+            return ComponentStatus("service status", Status.DOWN, "Timeout", required=True), {}
+        except Exception as exc:
+            return ComponentStatus("service status", Status.DOWN, f"Request failed: {exc}", required=True), {}
+
+        if response.status_code >= 500:
+            return ComponentStatus("service status", Status.DOWN, f"HTTP {response.status_code}", required=True), {}
+        if response.status_code >= 400:
+            return ComponentStatus("service status", Status.DEGRADED, f"HTTP {response.status_code}", required=True), {}
+        try:
+            payload = response.json()
+        except ValueError:
+            return ComponentStatus("service status", Status.DEGRADED, "Response is not JSON", required=True), {}
+
+        raw_status = str(payload.get("status", "")).lower()
+        if raw_status == "ok":
+            status = Status.OK
+        elif raw_status == "down":
+            status = Status.DOWN
+        elif raw_status == "degraded":
+            status = Status.DEGRADED
+        else:
+            status = Status.UNKNOWN
+        metrics = {
+            "service_status": payload.get("status"),
+            "service_status_version": payload.get("version"),
+            "service_status_database": payload.get("db") or payload.get("database"),
+            "heartbeat_down_after_seconds": payload.get("heartbeat_down_after_seconds"),
+            "last_errors_count": payload.get("last_errors_count"),
+            "services": payload.get("services"),
+        }
+        return ComponentStatus("service status", status, raw_status or "unknown", payload, required=True), metrics
 
     async def _table_names(self, db: aiosqlite.Connection) -> list[str]:
         cursor = await db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")

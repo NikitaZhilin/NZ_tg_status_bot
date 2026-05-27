@@ -13,12 +13,15 @@
 - `/refresh` - принудительное обновление статуса.
 - `/history` - история статусов за 24 часа.
 - `/report` - краткий отчёт за 24 часа.
+- `/report7d` - краткий отчёт за 7 дней.
 - `/top` - top процессов, доступных из окружения статус-бота.
 - `/disk` - диск и inode.
 - `/backups` - возраст и размер backup-файлов.
 - `/logs` - размер логов.
 - `/containers` - Docker containers, если явно подключён Docker API.
 - `/restart_status_bot` - перезапуск только статус-бота с подтверждением.
+- `/restart_rememberme` - запрос перезапуска RememberMe, если целевой endpoint настроен.
+- `/restart_incubator` - запрос перезапуска Инкубатора, если целевой endpoint настроен.
 
 Фоновая проверка и регулярная сводка по умолчанию запускаются раз в 2 часа:
 
@@ -42,6 +45,17 @@ python -m app.main
 ```
 
 Токены не хранятся в репозитории. `.env` добавлен в `.gitignore`.
+
+## Безопасный список контейнеров
+
+Команда `/containers` по умолчанию читает JSON snapshot из `CONTAINERS_SNAPSHOT_PATH`.
+Так статус-боту не нужен доступ к `/var/run/docker.sock`.
+
+На VPS можно обновлять snapshot cron-задачей:
+
+```bash
+/opt/nz_tg_status_bot/scripts/write-container-snapshot.sh /opt/nz_tg_status_bot/data/container-status.json
+```
 
 ## VPS deploy
 

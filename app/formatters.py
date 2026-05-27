@@ -348,6 +348,12 @@ def _status_label(status: Status) -> str:
 
 
 def _component_name_ru(name: str) -> str:
+    if name.startswith("backup "):
+        return "backup " + name.removeprefix("backup ")
+    if name.startswith("logs "):
+        return "логи " + name.removeprefix("logs ")
+    if name.startswith("disk "):
+        return "диск " + name.removeprefix("disk ")
     return COMPONENT_RU.get(name, name)
 
 
@@ -370,6 +376,9 @@ def _message_ru(message: str) -> str:
         "Response is not JSON": "ответ не JSON",
         "reachable": "доступен",
         "timeout": "таймаут",
+        "path not found": "путь не найден",
+        "no backup files": "backup-файлов нет",
+        "Server metrics collected": "метрики сервера собраны",
     }
     for source, target in replacements.items():
         if message == source:

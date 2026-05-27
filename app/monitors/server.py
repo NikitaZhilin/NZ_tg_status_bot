@@ -3,6 +3,7 @@ from __future__ import annotations
 import platform
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import httpx
 import psutil
@@ -36,7 +37,7 @@ class ServerMonitor:
                 "cpu",
                 Status.DEGRADED if cpu_percent >= self.settings.server_cpu_warn_percent else Status.OK,
                 f"{cpu_percent}% used",
-                required=False,
+                required=True,
             )
         )
         components.append(
@@ -44,7 +45,7 @@ class ServerMonitor:
                 "ram",
                 Status.DEGRADED if ram_percent >= self.settings.server_ram_warn_percent else Status.OK,
                 f"{ram_percent}% used",
-                required=False,
+                required=True,
             )
         )
         if self.settings.telegram_api_check_enabled:
@@ -55,7 +56,7 @@ class ServerMonitor:
             try:
                 usage = psutil.disk_usage(str(path))
             except Exception as exc:
-                components.append(ComponentStatus(f"disk {path}", Status.DEGRADED, str(exc), required=False))
+                components.append(ComponentStatus(f"disk {path}", Status.DEGRADED, str(exc), required=True))
                 continue
             disk_metrics.append(
                 {
@@ -66,9 +67,17 @@ class ServerMonitor:
                 }
             )
             status = Status.OK if usage.percent < self.settings.server_disk_warn_percent else Status.DEGRADED
-            components.append(ComponentStatus(f"disk {path}", status, f"{usage.percent}% used", required=False))
+            components.append(ComponentStatus(f"disk {path}", status, f"{usage.percent}% used", required=True))
 
         metrics["disks"] = disk_metrics
+        backup_metrics, backup_components = self._backup_components()
+        log_metrics, log_components = self._log_components()
+        if backup_metrics:
+            metrics["backups"] = backup_metrics
+        if log_metrics:
+            metrics["logs"] = log_metrics
+        components.extend(backup_components)
+        components.extend(log_components)
         components.append(ComponentStatus("server", Status.OK, "Server metrics collected", required=True))
         return BotStatus(
             key=self.key,
@@ -114,10 +123,77 @@ class ServerMonitor:
                     "telegram api",
                     Status.DEGRADED,
                     f"Telegram API returned HTTP {response.status_code}",
-                    required=False,
+                    required=True,
                 )
-            return ComponentStatus("telegram api", Status.OK, "reachable", required=False)
+            return ComponentStatus("telegram api", Status.OK, "reachable", required=True)
         except httpx.TimeoutException:
-            return ComponentStatus("telegram api", Status.DEGRADED, "timeout", required=False)
+            return ComponentStatus("telegram api", Status.DEGRADED, "timeout", required=True)
         except Exception as exc:
-            return ComponentStatus("telegram api", Status.DEGRADED, str(exc), required=False)
+            return ComponentStatus("telegram api", Status.DEGRADED, str(exc), required=True)
+
+    def _backup_components(self) -> tuple[list[dict], list[ComponentStatus]]:
+        metrics: list[dict] = []
+        components: list[ComponentStatus] = []
+        now = datetime.now(timezone.utc)
+        for path in self.settings.backup_path_list:
+            if not path.exists():
+                components.append(ComponentStatus(f"backup {path}", Status.DEGRADED, "path not found", required=True))
+                metrics.append({"path": str(path), "status": "missing"})
+                continue
+            files = [item for item in path.rglob("*") if item.is_file()]
+            if not files:
+                components.append(ComponentStatus(f"backup {path}", Status.DEGRADED, "no backup files", required=True))
+                metrics.append({"path": str(path), "status": "empty"})
+                continue
+            newest = max(files, key=lambda item: item.stat().st_mtime)
+            newest_dt = datetime.fromtimestamp(newest.stat().st_mtime, timezone.utc)
+            age_hours = round((now - newest_dt).total_seconds() / 3600, 1)
+            total_mb = sum(item.stat().st_size for item in files) // 1024 // 1024
+            status = Status.OK if age_hours <= self.settings.backup_warn_age_hours else Status.DEGRADED
+            components.append(
+                ComponentStatus(
+                    f"backup {path}",
+                    status,
+                    f"newest {age_hours}h ago, total {total_mb} MB",
+                    required=True,
+                )
+            )
+            metrics.append(
+                {
+                    "path": str(path),
+                    "files": len(files),
+                    "total_mb": total_mb,
+                    "newest": newest.name,
+                    "age_hours": age_hours,
+                }
+            )
+        return metrics, components
+
+    def _log_components(self) -> tuple[list[dict], list[ComponentStatus]]:
+        metrics: list[dict] = []
+        components: list[ComponentStatus] = []
+        for path in self.settings.log_path_list:
+            if not path.exists():
+                components.append(ComponentStatus(f"logs {path}", Status.DEGRADED, "path not found", required=True))
+                metrics.append({"path": str(path), "status": "missing"})
+                continue
+            files = [item for item in path.rglob("*") if item.is_file()]
+            total_mb = sum(_safe_size(item) for item in files) // 1024 // 1024
+            status = Status.OK if total_mb <= self.settings.log_warn_total_mb else Status.DEGRADED
+            components.append(
+                ComponentStatus(
+                    f"logs {path}",
+                    status,
+                    f"total {total_mb} MB",
+                    required=True,
+                )
+            )
+            metrics.append({"path": str(path), "files": len(files), "total_mb": total_mb})
+        return metrics, components
+
+
+def _safe_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0

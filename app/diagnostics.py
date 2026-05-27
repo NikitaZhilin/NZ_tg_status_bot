@@ -110,11 +110,19 @@ def format_logs(settings: Settings) -> str:
 
 
 def format_containers(settings: Settings) -> str:
+    snapshot_path = settings.containers_snapshot_path
+    if snapshot_path.exists():
+        try:
+            return _format_container_snapshot(snapshot_path, settings)
+        except Exception as exc:
+            return f"Docker containers: ошибка чтения snapshot-файла - {exc}"
+
     socket_path = settings.docker_socket_path
     if not socket_path.exists():
         return (
             "Docker containers: источник не подключён.\n\n"
-            "Для read-only просмотра нужен доступ к Docker API. "
+            f"Безопасный вариант: писать read-only snapshot в {snapshot_path} "
+            "через scripts/write-container-snapshot.sh на VPS. "
             "Подключать /var/run/docker.sock небезопасно, потому что он даёт контейнеру широкие права управления Docker."
         )
     try:
@@ -130,6 +138,47 @@ def format_containers(settings: Settings) -> str:
         status = row.get("Status", "-")
         lines.append(f"- {names}: {state}, {status}")
     return "\n".join(lines)
+
+
+def _format_container_snapshot(path: Path, settings: Settings) -> str:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    generated_at_raw = payload.get("generated_at")
+    generated_at = _parse_dt(generated_at_raw)
+    lines = ["Docker containers:"]
+    if generated_at:
+        age_minutes = round((datetime.now(timezone.utc) - generated_at).total_seconds() / 60, 1)
+        stale = age_minutes > settings.containers_snapshot_max_age_minutes
+        suffix = " (устарел)" if stale else ""
+        lines.append(f"Snapshot: {generated_at.astimezone().strftime('%d.%m.%Y %H:%M:%S')}, возраст {age_minutes} мин.{suffix}")
+    else:
+        lines.append("Snapshot: время неизвестно")
+
+    rows = payload.get("containers") or []
+    if not rows:
+        lines.append("- контейнеров нет")
+        return "\n".join(lines)
+
+    for row in rows:
+        name = row.get("Names") or row.get("Name") or row.get("ID") or row.get("Id") or "-"
+        if isinstance(name, list):
+            name = ", ".join(str(item).lstrip("/") for item in name)
+        state = row.get("State") or row.get("Status") or "-"
+        status = row.get("Status") or row.get("RunningFor") or "-"
+        image = row.get("Image") or "-"
+        lines.append(f"- {name}: {state}, {status}, image {image}")
+    return "\n".join(lines)
+
+
+def _parse_dt(value: object) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def _docker_get(socket_path: Path, path: str) -> bytes:
