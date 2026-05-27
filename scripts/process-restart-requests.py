@@ -8,8 +8,8 @@ from pathlib import Path
 
 
 REQUEST_DIRS = [
-    Path("/opt/bots/rememberme/restart-requests"),
-    Path("/opt/incubator-feed/restart-requests"),
+    ("rememberme", Path("/opt/bots/rememberme/restart-requests")),
+    ("incubator", Path("/opt/incubator-feed/restart-requests")),
 ]
 
 ALLOWLIST = {
@@ -29,11 +29,11 @@ ALLOWLIST = {
 
 
 def main() -> None:
-    for request_dir in REQUEST_DIRS:
-        process_dir(request_dir)
+    for bot_key, request_dir in REQUEST_DIRS:
+        process_dir(bot_key, request_dir)
 
 
-def process_dir(request_dir: Path) -> None:
+def process_dir(default_bot_key: str, request_dir: Path) -> None:
     if not request_dir.exists():
         return
     processed_dir = request_dir / "processed"
@@ -43,7 +43,7 @@ def process_dir(request_dir: Path) -> None:
     for path in sorted(request_dir.glob("*.json")):
         try:
             request = json.loads(path.read_text(encoding="utf-8"))
-            containers = containers_for(request)
+            containers = containers_for(request, default_bot_key=default_bot_key)
             for container in containers:
                 subprocess.run(["docker", "restart", container], check=True)
             destination = processed_dir / f"{timestamp()}-{path.name}"
@@ -54,8 +54,8 @@ def process_dir(request_dir: Path) -> None:
             shutil.move(str(path), failed_dir / f"{timestamp()}-{path.name}")
 
 
-def containers_for(request: dict) -> list[str]:
-    bot_key = str(request.get("bot_key", "")).strip().lower()
+def containers_for(request: dict, *, default_bot_key: str = "") -> list[str]:
+    bot_key = str(request.get("bot_key") or default_bot_key).strip().lower()
     target = str(request.get("target", "")).strip().lower()
     if bot_key not in ALLOWLIST:
         raise ValueError(f"Unknown bot_key: {bot_key}")
