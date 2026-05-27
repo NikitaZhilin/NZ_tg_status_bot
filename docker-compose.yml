@@ -9,6 +9,8 @@ services:
       - .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    networks:
+      - rememberme_bot_network
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -22,3 +24,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+
+networks:
+  rememberme_bot_network:
+    external: true
