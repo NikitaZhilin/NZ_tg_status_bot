@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import os
 from datetime import datetime, timedelta, timezone
 
 from aiogram import F, Router
@@ -202,6 +204,25 @@ async def logs(message: Message, settings: Settings) -> None:
     await message.answer(format_logs(settings))
 
 
+@router.message(Command("restart_status_bot"))
+async def restart_status_bot(message: Message, settings: Settings) -> None:
+    if not is_admin(message, settings):
+        await message.answer("Доступ запрещен.")
+        return
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Да, перезапустить статус-бота", callback_data="restart:confirm"),
+                InlineKeyboardButton(text="Отмена", callback_data="restart:cancel"),
+            ]
+        ]
+    )
+    await message.answer(
+        "Перезапустить только статус-бота?\nДругие контейнеры и сервисы затронуты не будут.",
+        reply_markup=keyboard,
+    )
+
+
 @router.callback_query(F.data.startswith("refresh:"))
 async def refresh_callback(
     callback: CallbackQuery,
@@ -232,6 +253,24 @@ async def refresh_callback(
         text = format_status_summary(snapshot.bots, snapshot.server)
     if callback.message:
         await callback.message.answer(text, reply_markup=status_inline_keyboard())
+
+
+@router.callback_query(F.data.startswith("restart:"))
+async def restart_callback(callback: CallbackQuery, settings: Settings) -> None:
+    if not callback.from_user or callback.from_user.id not in settings.admin_id_set:
+        await callback.answer("Доступ запрещен.", show_alert=True)
+        return
+    action = (callback.data or "").split(":", 1)[1]
+    if action == "cancel":
+        await callback.answer("Отменено.")
+        if callback.message:
+            await callback.message.answer("Перезапуск отменён.")
+        return
+    if action == "confirm":
+        await callback.answer("Перезапускаю статус-бота...")
+        if callback.message:
+            await callback.message.answer("Статус-бот перезапускается. Через несколько секунд он снова будет доступен.")
+        asyncio.create_task(_exit_for_restart())
 
 
 @router.callback_query(F.data.startswith("alert:"))
@@ -299,3 +338,8 @@ def _report_text(storage: StatusStorage) -> str:
         },
         hours=24,
     )
+
+
+async def _exit_for_restart() -> None:
+    await asyncio.sleep(1.5)
+    os._exit(0)
