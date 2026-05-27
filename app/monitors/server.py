@@ -4,6 +4,7 @@ import platform
 import time
 from datetime import datetime, timezone
 
+import httpx
 import psutil
 
 from app.config import Settings
@@ -46,6 +47,8 @@ class ServerMonitor:
                 required=False,
             )
         )
+        if self.settings.telegram_api_check_enabled:
+            components.append(await self._telegram_api_component())
 
         disk_metrics = []
         for path in self.settings.disk_path_list:
@@ -100,3 +103,21 @@ class ServerMonitor:
             )
         self._last_net_check = (now, counters)
         return metrics
+
+    async def _telegram_api_component(self) -> ComponentStatus:
+        try:
+            timeout = httpx.Timeout(self.settings.telegram_api_timeout_seconds)
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get("https://api.telegram.org")
+            if response.status_code >= 500:
+                return ComponentStatus(
+                    "telegram api",
+                    Status.DEGRADED,
+                    f"Telegram API returned HTTP {response.status_code}",
+                    required=False,
+                )
+            return ComponentStatus("telegram api", Status.OK, "reachable", required=False)
+        except httpx.TimeoutException:
+            return ComponentStatus("telegram api", Status.DEGRADED, "timeout", required=False)
+        except Exception as exc:
+            return ComponentStatus("telegram api", Status.DEGRADED, str(exc), required=False)

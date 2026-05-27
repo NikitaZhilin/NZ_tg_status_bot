@@ -22,6 +22,7 @@ COMPONENT_RU = {
     "cpu": "процессор",
     "ram": "оперативная память",
     "docker": "Docker",
+    "telegram api": "Telegram API",
     "sqlite": "SQLite база",
     "pid": "PID-процесс",
     "systemd": "systemd-сервис",
@@ -109,6 +110,11 @@ def format_server_details(item: BotStatus) -> str:
         f"Сеть входящая: {_format_speed(metrics.get('net_recv_kbps'))}",
         f"Сеть исходящая: {_format_speed(metrics.get('net_sent_kbps'))}",
     ]
+    if item.components:
+        lines.extend(["", "Проверки:"])
+        for component in item.components:
+            message = f" - {_message_ru(component.message)}" if component.message else ""
+            lines.append(f"- {_component_name_ru(component.name)}: {_status_label(component.status)}{message}")
     disks = metrics.get("disks") or []
     if disks:
         lines.extend(["", "Диски:"])
@@ -147,12 +153,14 @@ def format_history(bot_key: str, snapshots: list[dict[str, Any]], hours: int = 2
     uptime = round((ok_count / total) * 100, 1) if total else 0
     transitions = _transitions(snapshots)
     down_count = sum(1 for item in transitions if item["new"] == Status.DOWN.value)
+    recovery_minutes = _average_recovery_minutes(snapshots)
     spark = " ".join(_short_status(item["overall_status"]) for item in snapshots[-12:])
     lines = [
         f"{title}: история за {hours} ч.",
         f"Проверок: {total}",
         f"Uptime по проверкам: {uptime}%",
         f"Переходов в DOWN: {down_count}",
+        f"Среднее восстановление: {_format_recovery_minutes(recovery_minutes)}",
         f"График: {spark}",
         "",
         "Последние смены статуса:",
@@ -176,10 +184,12 @@ def format_report(history_by_bot: dict[str, list[dict[str, Any]]], hours: int = 
         uptime = round((ok_count / total) * 100, 1) if total else 0
         transitions = _transitions(snapshots)
         down_count = sum(1 for item in transitions if item["new"] == Status.DOWN.value)
+        recovery_minutes = _average_recovery_minutes(snapshots)
         current = snapshots[-1]["overall_status"]
         lines.append(
             f"- {_history_name(bot_key)}: сейчас {STATUS_RU.get(current, current)} ({current}), "
-            f"uptime {uptime}%, DOWN {down_count}, проверок {total}"
+            f"uptime {uptime}%, DOWN {down_count}, "
+            f"среднее восстановление {_format_recovery_minutes(recovery_minutes)}, проверок {total}"
         )
     return "\n".join(lines)
 
@@ -195,6 +205,7 @@ def format_alert(name: str, old_status: str, new_status: str, item: BotStatus) -
     lines = [
         title,
         "",
+        f"Уровень: {_alert_level(new_status)}",
         f"Было: {STATUS_RU.get(old_status, old_status)} ({old_status})",
         f"Стало: {STATUS_RU.get(new_status, new_status)} ({new_status})",
         f"Проверено: {_format_dt(item.checked_at)}",
@@ -269,6 +280,53 @@ def _transitions(snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def _average_recovery_minutes(snapshots: list[dict[str, Any]]) -> float | None:
+    problem_started_at: datetime | None = None
+    durations: list[float] = []
+    for item in snapshots:
+        created_at = _parse_snapshot_dt(item.get("created_at"))
+        if created_at is None:
+            continue
+        status = item["overall_status"]
+        if status in {Status.DOWN.value, Status.DEGRADED.value} and problem_started_at is None:
+            problem_started_at = created_at
+        elif status == Status.OK.value and problem_started_at is not None:
+            durations.append((created_at - problem_started_at).total_seconds() / 60)
+            problem_started_at = None
+    if not durations:
+        return None
+    return round(sum(durations) / len(durations), 1)
+
+
+def _parse_snapshot_dt(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+
+
+def _format_recovery_minutes(value: float | None) -> str:
+    if value is None:
+        return "нет данных"
+    if value < 60:
+        return f"{value} мин."
+    hours = int(value // 60)
+    minutes = int(value % 60)
+    return f"{hours} ч. {minutes} мин."
+
+
+def _alert_level(new_status: str) -> str:
+    if new_status == Status.DOWN.value:
+        return "critical"
+    if new_status == Status.DEGRADED.value:
+        return "warning"
+    if new_status == Status.OK.value:
+        return "info"
+    return "unknown"
+
+
 def _format_server_short(item: BotStatus) -> list[str]:
     metrics = item.metrics
     lines = [
@@ -310,6 +368,8 @@ def _message_ru(message: str) -> str:
         "Timeout": "таймаут",
         "Request failed": "запрос не выполнен",
         "Response is not JSON": "ответ не JSON",
+        "reachable": "доступен",
+        "timeout": "таймаут",
     }
     for source, target in replacements.items():
         if message == source:

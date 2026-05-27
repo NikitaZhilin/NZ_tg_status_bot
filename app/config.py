@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     server_cpu_warn_percent: float = Field(default=90.0, alias="SERVER_CPU_WARN_PERCENT")
     server_ram_warn_percent: float = Field(default=85.0, alias="SERVER_RAM_WARN_PERCENT")
     server_disk_warn_percent: float = Field(default=85.0, alias="SERVER_DISK_WARN_PERCENT")
+    telegram_api_check_enabled: bool = Field(default=True, alias="TELEGRAM_API_CHECK_ENABLED")
+    telegram_api_timeout_seconds: float = Field(default=5.0, alias="TELEGRAM_API_TIMEOUT_SECONDS")
     backup_paths: str = Field(default="", alias="BACKUP_PATHS")
     log_paths: str = Field(default="", alias="LOG_PATHS")
     docker_socket_path: Path = Field(default=Path("/var/run/docker.sock"), alias="DOCKER_SOCKET_PATH")
