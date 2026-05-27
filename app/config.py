@@ -19,7 +19,10 @@ class Settings(BaseSettings):
     admin_ids: str = Field(default="", alias="ADMIN_IDS")
     bot_timezone: str = Field(default="Europe/Moscow", alias="BOT_TIMEZONE")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
-    check_interval_seconds: int = Field(default=60, alias="CHECK_INTERVAL_SECONDS")
+    check_interval_seconds: int = Field(default=7200, alias="CHECK_INTERVAL_SECONDS")
+    summary_interval_seconds: int = Field(default=7200, alias="SUMMARY_INTERVAL_SECONDS")
+    send_periodic_summary: bool = Field(default=True, alias="SEND_PERIODIC_SUMMARY")
+    summary_on_startup: bool = Field(default=True, alias="SUMMARY_ON_STARTUP")
     alert_cooldown_seconds: int = Field(default=600, alias="ALERT_COOLDOWN_SECONDS")
     status_db_path: Path = Field(default=Path("data/status_bot.db"), alias="STATUS_DB_PATH")
 
@@ -68,4 +71,3 @@ def setup_logging(settings: Settings) -> None:
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
-
