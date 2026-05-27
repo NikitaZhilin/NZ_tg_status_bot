@@ -15,8 +15,10 @@ class ServerMonitor:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._last_net_check: tuple[float, psutil._common.snetio] | None = None
 
     async def check(self, *, force: bool = False) -> BotStatus:
+        net_metrics = self._network_metrics()
         components: list[ComponentStatus] = []
         metrics: dict = {
             "hostname": platform.node(),
@@ -24,6 +26,7 @@ class ServerMonitor:
             "uptime_seconds": int(time.time() - psutil.boot_time()),
             "cpu_percent": psutil.cpu_percent(interval=0.1),
             "ram_percent": psutil.virtual_memory().percent,
+            **net_metrics,
         }
 
         disk_metrics = []
@@ -55,3 +58,27 @@ class ServerMonitor:
             checked_at=datetime.now(timezone.utc),
         )
 
+    def _network_metrics(self) -> dict:
+        now = time.monotonic()
+        counters = psutil.net_io_counters()
+        metrics = {
+            "net_bytes_sent_total": counters.bytes_sent,
+            "net_bytes_recv_total": counters.bytes_recv,
+            "net_sent_kbps": None,
+            "net_recv_kbps": None,
+            "net_interval_seconds": None,
+        }
+        if self._last_net_check is not None:
+            previous_time, previous = self._last_net_check
+            elapsed = max(now - previous_time, 0.001)
+            sent_delta = max(counters.bytes_sent - previous.bytes_sent, 0)
+            recv_delta = max(counters.bytes_recv - previous.bytes_recv, 0)
+            metrics.update(
+                {
+                    "net_sent_kbps": round((sent_delta * 8) / elapsed / 1000, 2),
+                    "net_recv_kbps": round((recv_delta * 8) / elapsed / 1000, 2),
+                    "net_interval_seconds": round(elapsed, 1),
+                }
+            )
+        self._last_net_check = (now, counters)
+        return metrics

@@ -67,6 +67,8 @@ def format_server_details(item: BotStatus) -> str:
         f"Uptime: {_format_duration(metrics.get('uptime_seconds'))}",
         f"CPU: {metrics.get('cpu_percent', '-')}%",
         f"RAM: {metrics.get('ram_percent', '-')}%",
+        f"Сеть входящая: {_format_speed(metrics.get('net_recv_kbps'))}",
+        f"Сеть исходящая: {_format_speed(metrics.get('net_sent_kbps'))}",
     ]
     disks = metrics.get("disks") or []
     if disks:
@@ -167,6 +169,7 @@ def _format_server_short(item: BotStatus) -> list[str]:
         f"Server: {STATUS_ICON[item.status]}",
         f"CPU: {metrics.get('cpu_percent', '-')}%",
         f"RAM: {metrics.get('ram_percent', '-')}%",
+        f"Net in/out: {_format_speed(metrics.get('net_recv_kbps'))} / {_format_speed(metrics.get('net_sent_kbps'))}",
         f"Uptime: {_format_duration(metrics.get('uptime_seconds'))}",
     ]
     disks = metrics.get("disks") or []
@@ -188,6 +191,15 @@ def _format_duration(seconds: Any) -> str:
     if hours:
         return f"{hours}h {minutes}m"
     return f"{minutes}m"
+
+
+def _format_speed(kbps: Any) -> str:
+    if kbps is None:
+        return "будет после следующей проверки"
+    value = float(kbps)
+    if value >= 1000:
+        return f"{round(value / 1000, 2)} Mbit/s"
+    return f"{round(value, 2)} Kbit/s"
 
 
 def _format_dt(value: datetime) -> str:
