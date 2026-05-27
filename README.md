@@ -18,6 +18,9 @@
 - `/disk` - диск и inode.
 - `/backups` - возраст и размер backup-файлов.
 - `/logs` - размер логов.
+- `/logs_status` - последние строки логов статус-бота с маскированием секретов.
+- `/logs_rememberme` - последние строки логов RememberMe с маскированием секретов.
+- `/logs_incubator` - последние строки логов Инкубатора с маскированием секретов.
 - `/containers` - Docker containers, если явно подключён Docker API.
 - `/restart_status_bot` - перезапуск только статус-бота с подтверждением.
 - `/restart_rememberme` - запрос перезапуска RememberMe, если целевой endpoint настроен.

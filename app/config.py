@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     telegram_api_timeout_seconds: float = Field(default=5.0, alias="TELEGRAM_API_TIMEOUT_SECONDS")
     backup_warn_age_hours: float = Field(default=48.0, alias="BACKUP_WARN_AGE_HOURS")
     log_warn_total_mb: int = Field(default=500, alias="LOG_WARN_TOTAL_MB")
+    log_tail_lines: int = Field(default=80, alias="LOG_TAIL_LINES")
+    log_tail_bytes: int = Field(default=65536, alias="LOG_TAIL_BYTES")
     backup_paths: str = Field(default="", alias="BACKUP_PATHS")
     log_paths: str = Field(default="", alias="LOG_PATHS")
     containers_snapshot_path: Path = Field(default=Path("/app/data/container-status.json"), alias="CONTAINERS_SNAPSHOT_PATH")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 from datetime import datetime, timezone
 from pathlib import Path
@@ -109,6 +110,36 @@ def format_logs(settings: Settings) -> str:
     return "\n".join(lines)
 
 
+def format_log_tail(settings: Settings, source: str) -> str:
+    source_title = {
+        "status": "статус-бота",
+        "rememberme": "RememberMe",
+        "incubator": "Инкубатора",
+    }.get(source, source)
+    base_path = _log_path_for_source(settings, source)
+    if base_path is None:
+        return f"Логи {source_title}: путь не настроен."
+    if not base_path.exists():
+        return f"Логи {source_title}: путь не найден - {base_path}"
+
+    files = [item for item in base_path.rglob("*") if item.is_file()]
+    if not files:
+        return f"Логи {source_title}: файлов нет."
+    newest = max(files, key=lambda item: item.stat().st_mtime)
+    text = _read_tail(newest, settings.log_tail_bytes)
+    lines = _mask_secrets(text).splitlines()[-settings.log_tail_lines :]
+    if not lines:
+        return f"Логи {source_title}: файл {newest.name} пуст."
+    result = [
+        f"Последние строки логов {source_title}:",
+        f"Файл: {newest.name}",
+        f"Строк: {len(lines)}",
+        "",
+        *lines,
+    ]
+    return _telegram_safe_text("\n".join(result))
+
+
 def format_containers(settings: Settings) -> str:
     snapshot_path = settings.containers_snapshot_path
     if snapshot_path.exists():
@@ -138,6 +169,43 @@ def format_containers(settings: Settings) -> str:
         status = row.get("Status", "-")
         lines.append(f"- {names}: {state}, {status}")
     return "\n".join(lines)
+
+
+def _log_path_for_source(settings: Settings, source: str) -> Path | None:
+    paths = settings.log_path_list
+    if source == "status":
+        return next((path for path in paths if str(path).endswith("/app/logs") or str(path) == "/app/logs"), None)
+    if source == "rememberme":
+        return next((path for path in paths if "rememberme" in str(path).lower()), None)
+    if source == "incubator":
+        return next((path for path in paths if "incubator" in str(path).lower()), None)
+    return None
+
+
+def _read_tail(path: Path, max_bytes: int) -> str:
+    size = path.stat().st_size
+    with path.open("rb") as file:
+        if size > max_bytes:
+            file.seek(-max_bytes, os.SEEK_END)
+        data = file.read()
+    return data.decode("utf-8", errors="replace")
+
+
+def _mask_secrets(text: str) -> str:
+    masked = re.sub(r"\b\d{8,12}:[A-Za-z0-9_-]{30,}\b", "<telegram-token>", text)
+    masked = re.sub(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+", "Bearer <secret>", masked)
+    masked = re.sub(
+        r"(?i)\b(token|secret|password|api[_-]?key|authorization|x-admin-token)(\s*[:=]\s*)([^\s,;]+)",
+        lambda match: f"{match.group(1)}{match.group(2)}<secret>",
+        masked,
+    )
+    return masked
+
+
+def _telegram_safe_text(text: str, limit: int = 3800) -> str:
+    if len(text) <= limit:
+        return text
+    return "...\n" + text[-limit:]
 
 
 def _format_container_snapshot(path: Path, settings: Settings) -> str:

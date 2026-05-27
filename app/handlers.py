@@ -10,7 +10,14 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from app.bot_access import is_admin
 from app.config import Settings
-from app.diagnostics import format_backups, format_containers, format_disk_details, format_logs, format_top_processes
+from app.diagnostics import (
+    format_backups,
+    format_containers,
+    format_disk_details,
+    format_log_tail,
+    format_logs,
+    format_top_processes,
+)
 from app.formatters import (
     format_bot_details,
     format_errors,
@@ -214,6 +221,21 @@ async def logs(message: Message, settings: Settings) -> None:
     await message.answer(format_logs(settings))
 
 
+@router.message(Command("logs_status"))
+async def logs_status(message: Message, settings: Settings) -> None:
+    await _send_log_tail(message, settings, "status")
+
+
+@router.message(Command("logs_rememberme"))
+async def logs_rememberme(message: Message, settings: Settings) -> None:
+    await _send_log_tail(message, settings, "rememberme")
+
+
+@router.message(Command("logs_incubator"))
+async def logs_incubator(message: Message, settings: Settings) -> None:
+    await _send_log_tail(message, settings, "incubator")
+
+
 @router.message(Command("restart_status_bot"))
 async def restart_status_bot(message: Message, settings: Settings) -> None:
     if not is_admin(message, settings):
@@ -399,6 +421,13 @@ async def _ask_target_restart(message: Message, settings: Settings, bot_key: str
         "Команда будет отправлена только в endpoint этого бота. Другие сервисы статус-бот не трогает.",
         reply_markup=keyboard,
     )
+
+
+async def _send_log_tail(message: Message, settings: Settings, source: str) -> None:
+    if not is_admin(message, settings):
+        await message.answer("Доступ запрещен.")
+        return
+    await message.answer(format_log_tail(settings, source))
 
 
 def _report_text(storage: StatusStorage, *, hours: int = 24) -> str:
