@@ -13,6 +13,13 @@ STATUS_ICON = {
     Status.UNKNOWN: "UNKNOWN",
 }
 
+STATUS_RU = {
+    "OK": "работает",
+    "DEGRADED": "работает с проблемами",
+    "DOWN": "недоступен",
+    "UNKNOWN": "неизвестно",
+}
+
 
 def format_status_summary(bots: list[BotStatus], server: BotStatus | None = None) -> str:
     items = list(bots)
@@ -97,15 +104,40 @@ def format_alert(name: str, old_status: str, new_status: str, item: BotStatus) -
         for component in item.components
         if component.status in {Status.DOWN, Status.DEGRADED}
     ]
+    recovered = new_status == Status.OK.value
+    title = (
+        f"{name}: восстановлен"
+        if recovered
+        else f"{name}: изменился статус"
+    )
     lines = [
-        f"{name}: статус изменился {old_status} -> {new_status}",
+        title,
+        "",
+        f"Было: {STATUS_RU.get(old_status, old_status)} ({old_status})",
+        f"Стало: {STATUS_RU.get(new_status, new_status)} ({new_status})",
         f"Проверено: {_format_dt(item.checked_at)}",
     ]
+
+    reason = _alert_reason(item, failed, recovered)
+    if reason:
+        lines.extend(["", f"Причина: {reason}"])
+
+    metric_lines = _format_alert_metrics(item)
+    if metric_lines:
+        lines.extend(["", "Метрики:", *metric_lines])
+
     if failed:
         lines.append("")
         lines.append("Проблемные компоненты:")
         for component in failed[:5]:
-            lines.append(f"- {component.name}: {component.status.value} - {component.message}")
+            lines.append(
+                f"- {component.name}: "
+                f"{STATUS_RU.get(component.status.value, component.status.value)} "
+                f"({component.status.value})"
+                f"{' - ' + component.message if component.message else ''}"
+            )
+    else:
+        lines.extend(["", "Компоненты: критичных проблем не найдено."])
     return "\n".join(lines)
 
 
@@ -165,3 +197,40 @@ def _format_dt(value: datetime) -> str:
 def _compact_dict(value: dict[str, Any]) -> str:
     return ", ".join(f"{key}={item}" for key, item in list(value.items())[:6])
 
+
+def _alert_reason(item: BotStatus, failed: list, recovered: bool) -> str:
+    if recovered:
+        return "обязательные проверки снова проходят успешно."
+    required_failed = [component for component in failed if component.required]
+    if required_failed:
+        component = required_failed[0]
+        return f"обязательный компонент `{component.name}` сообщил `{component.status.value}`."
+    if failed:
+        component = failed[0]
+        return f"необязательный компонент `{component.name}` сообщил `{component.status.value}`."
+    if item.status == Status.UNKNOWN:
+        return "нет достоверных данных от источников мониторинга."
+    return ""
+
+
+def _format_alert_metrics(item: BotStatus) -> list[str]:
+    metrics = item.metrics
+    lines: list[str] = []
+    if metrics.get("version"):
+        lines.append(f"- версия: {metrics['version']}")
+    if metrics.get("users_total") is not None:
+        user_parts = [f"всего {metrics['users_total']}"]
+        if metrics.get("active_users_24h") is not None:
+            user_parts.append(f"активных за 24ч {metrics['active_users_24h']}")
+        if metrics.get("users_active") is not None:
+            user_parts.append(f"активных {metrics['users_active']}")
+        if metrics.get("users_seen_24h") is not None:
+            user_parts.append(f"видели за 24ч {metrics['users_seen_24h']}")
+        lines.append("- пользователи: " + ", ".join(user_parts))
+    if metrics.get("database"):
+        lines.append(f"- база данных: {metrics['database']}")
+    if metrics.get("uptime_seconds") is not None:
+        lines.append(f"- uptime: {_format_duration(metrics['uptime_seconds'])}")
+    if metrics.get("critical_errors_total") is not None:
+        lines.append(f"- критические ошибки: {metrics['critical_errors_total']}")
+    return lines[:6]
