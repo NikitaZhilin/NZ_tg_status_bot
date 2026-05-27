@@ -56,7 +56,9 @@ def test_restart_history_shows_processed_request(monkeypatch) -> None:
     assert "История перезапусков:" in text
     assert "28.05.2026 13:00:00" in text
     assert "RememberMe: обработано" in text
-    assert "target=all" in text
+    assert "цель: все компоненты" in text
+    assert "инициатор: Telegram ID 123" in text
+    assert "ручной перезапуск из статус-бота" in text
     assert "rememberme-20260528-test" in text
 
 

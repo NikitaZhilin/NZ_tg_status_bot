@@ -426,7 +426,7 @@ def _service_name_ru(name: str) -> str:
     return {
         "api": "API",
         "bot": "Telegram-бот",
-        "worker": "worker",
+        "worker": "фоновый обработчик",
     }.get(name, name)
 
 

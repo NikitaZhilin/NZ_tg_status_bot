@@ -121,7 +121,7 @@ async def bot_rememberme(message: Message, settings: Settings, status_manager: S
         return
     snapshot = await status_manager.refresh(force=True)
     if not snapshot.rememberme:
-        await message.answer("RememberMe monitor failed.")
+        await message.answer("Мониторинг RememberMe не получил данные.")
         return
     await message.answer(format_bot_details(snapshot.rememberme), reply_markup=status_inline_keyboard())
 
@@ -134,7 +134,7 @@ async def bot_incubator(message: Message, settings: Settings, status_manager: St
         return
     snapshot = await status_manager.refresh(force=True)
     if not snapshot.incubator:
-        await message.answer("Incubator monitor failed.")
+        await message.answer("Мониторинг Инкубатора не получил данные.")
         return
     await message.answer(format_bot_details(snapshot.incubator), reply_markup=status_inline_keyboard())
 
@@ -292,9 +292,9 @@ async def refresh_callback(
     await callback.answer("Проверяю...")
     snapshot = await status_manager.refresh(force=True)
     if action == "rememberme":
-        text = format_bot_details(snapshot.rememberme) if snapshot.rememberme else "RememberMe monitor failed."
+        text = format_bot_details(snapshot.rememberme) if snapshot.rememberme else "Мониторинг RememberMe не получил данные."
     elif action == "incubator":
-        text = format_bot_details(snapshot.incubator) if snapshot.incubator else "Incubator monitor failed."
+        text = format_bot_details(snapshot.incubator) if snapshot.incubator else "Мониторинг Инкубатора не получил данные."
     elif action == "server":
         text = format_server_details(snapshot.server)
     elif action == "errors":
@@ -449,7 +449,7 @@ async def _send_target_restart_prompt(message: Message, settings: Settings, bot_
     )
     await message.answer(
         f"Перезапустить {title}?\n"
-        "Команда будет отправлена только в endpoint этого бота. Другие сервисы статус-бот не трогает.",
+        "Команда будет отправлена только в сервис перезапуска этого бота. Другие сервисы статус-бот не трогает.",
         reply_markup=keyboard,
     )
 

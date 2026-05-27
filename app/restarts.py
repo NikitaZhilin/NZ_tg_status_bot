@@ -43,7 +43,7 @@ class RestartService:
         if not target.url:
             return RestartResult(
                 False,
-                f"{target.name}: endpoint перезапуска не настроен. Нужен URL в .env статус-бота.",
+                f"{target.name}: адрес для перезапуска не настроен. Нужен URL в .env статус-бота.",
             )
         if not target.token:
             return RestartResult(
@@ -55,7 +55,7 @@ class RestartService:
             "target": target.target,
             "confirm": f"restart:{bot_key}",
             "requested_by": f"telegram:{requested_by}",
-            "reason": "manual restart from status bot",
+            "reason": "ручной перезапуск из статус-бота",
         }
         headers = {"X-Admin-Token": target.token}
         timeout = httpx.Timeout(self.settings.restart_timeout_seconds)
@@ -68,12 +68,20 @@ class RestartService:
             return RestartResult(False, f"{target.name}: запрос перезапуска не выполнен - {exc}")
 
         if response.status_code not in {200, 202}:
-            return RestartResult(False, f"{target.name}: endpoint вернул HTTP {response.status_code}.")
+            return RestartResult(False, f"{target.name}: сервис перезапуска вернул HTTP {response.status_code}.")
         try:
             data = response.json()
         except ValueError:
             data = {}
-        status = data.get("status") or "accepted"
+        status = _restart_status_label(str(data.get("status") or "accepted"))
         operation_id = data.get("operation_id")
-        suffix = f", operation_id={operation_id}" if operation_id else ""
-        return RestartResult(True, f"{target.name}: запрос перезапуска принят ({status}{suffix}).")
+        suffix = f", заявка: {operation_id}" if operation_id else ""
+        return RestartResult(True, f"{target.name}: запрос на перезапуск {status}{suffix}.")
+
+
+def _restart_status_label(status: str) -> str:
+    return {
+        "accepted": "принят",
+        "queued": "поставлен в очередь",
+        "scheduled": "запланирован",
+    }.get(status.strip().lower(), status)

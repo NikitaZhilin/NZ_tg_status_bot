@@ -67,9 +67,9 @@ def format_disk_details(settings: Settings) -> str:
 def format_backups(settings: Settings) -> str:
     paths = settings.backup_path_list
     if not paths:
-        return "Backups: пути не настроены. Укажи BACKUP_PATHS в .env статус-бота."
+        return "Резервные копии: пути не настроены. Укажи BACKUP_PATHS в .env статус-бота."
 
-    lines = ["Backups:"]
+    lines = ["Резервные копии:"]
     now = datetime.now(timezone.utc)
     for path in paths:
         if not path.exists():
@@ -147,12 +147,12 @@ def format_containers(settings: Settings) -> str:
         try:
             return _format_container_snapshot(snapshot_path, settings)
         except Exception as exc:
-            return f"Docker containers: ошибка чтения snapshot-файла - {exc}"
+            return f"Контейнеры Docker: ошибка чтения snapshot-файла - {exc}"
 
     socket_path = settings.docker_socket_path
     if not socket_path.exists():
         return (
-            "Docker containers: источник не подключён.\n\n"
+            "Контейнеры Docker: источник не подключён.\n\n"
             f"Безопасный вариант: писать read-only snapshot в {snapshot_path} "
             "через scripts/write-container-snapshot.sh на VPS. "
             "Подключать /var/run/docker.sock небезопасно, потому что он даёт контейнеру широкие права управления Docker."
@@ -160,10 +160,10 @@ def format_containers(settings: Settings) -> str:
     try:
         payload = _docker_get(socket_path, "/containers/json?all=1")
     except Exception as exc:
-        return f"Docker containers: ошибка чтения Docker API - {exc}"
+        return f"Контейнеры Docker: ошибка чтения Docker API - {exc}"
 
     rows = json.loads(payload.decode("utf-8"))
-    lines = ["Docker containers:"]
+    lines = ["Контейнеры Docker:"]
     for row in rows:
         names = ", ".join(name.lstrip("/") for name in row.get("Names", [])) or row.get("Id", "")[:12]
         state = row.get("State", "-")
@@ -211,14 +211,15 @@ def format_restart_history(settings: Settings) -> str:
         display_timezone = _display_timezone(getattr(settings, "bot_timezone", "Europe/Moscow"))
         operation_id = payload.get("operation_id") or _clean_restart_operation_id(entry["path"].stem)
         target = payload.get("target") or "-"
-        requested_by = payload.get("requested_by") or "-"
+        requested_by = _restart_requested_by_label(str(payload.get("requested_by") or "-"))
         reason = payload.get("reason") or ""
         lines.append(
             f"- {created_at.astimezone(display_timezone).strftime('%d.%m.%Y %H:%M:%S')} "
-            f"{entry['bot']}: {entry['state']}, target={target}, id={operation_id}, от={requested_by}"
+            f"{entry['bot']}: {entry['state']}, цель: {_restart_target_label(str(target))}, "
+            f"заявка: {operation_id}, инициатор: {requested_by}"
         )
         if reason:
-            lines.append(f"  причина: {reason}")
+            lines.append(f"  причина: {_restart_reason_label(str(reason))}")
     return _telegram_safe_text("\n".join(lines))
 
 
@@ -309,14 +310,14 @@ def _format_container_snapshot(path: Path, settings: Settings) -> str:
     payload = json.loads(path.read_text(encoding="utf-8"))
     generated_at_raw = payload.get("generated_at")
     generated_at = _parse_dt(generated_at_raw)
-    lines = ["Docker containers:"]
+    lines = ["Контейнеры Docker:"]
     if generated_at:
         age_minutes = round((datetime.now(timezone.utc) - generated_at).total_seconds() / 60, 1)
         stale = age_minutes > settings.containers_snapshot_max_age_minutes
         suffix = " (устарел)" if stale else ""
-        lines.append(f"Snapshot: {generated_at.astimezone().strftime('%d.%m.%Y %H:%M:%S')}, возраст {age_minutes} мин.{suffix}")
+        lines.append(f"Снимок: {generated_at.astimezone().strftime('%d.%m.%Y %H:%M:%S')}, возраст {age_minutes} мин.{suffix}")
     else:
-        lines.append("Snapshot: время неизвестно")
+        lines.append("Снимок: время неизвестно")
 
     rows = payload.get("containers") or []
     if not rows:
@@ -330,7 +331,7 @@ def _format_container_snapshot(path: Path, settings: Settings) -> str:
         state = row.get("State") or row.get("Status") or "-"
         status = row.get("Status") or row.get("RunningFor") or "-"
         image = row.get("Image") or "-"
-        lines.append(f"- {name}: {state}, {status}, image {image}")
+        lines.append(f"- {name}: {state}, {status}, образ {image}")
     return "\n".join(lines)
 
 
@@ -344,6 +345,31 @@ def _parse_dt(value: object) -> datetime | None:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed
+
+
+def _restart_target_label(target: str) -> str:
+    return {
+        "all": "все компоненты",
+        "api": "API",
+        "bot": "Telegram-бот",
+        "worker": "фоновый обработчик",
+        "web": "web-сервис",
+    }.get(target.strip().lower(), target)
+
+
+def _restart_requested_by_label(value: str) -> str:
+    if value.startswith("telegram:"):
+        return f"Telegram ID {value.split(':', 1)[1]}"
+    if value == "-":
+        return "не указан"
+    return value
+
+
+def _restart_reason_label(value: str) -> str:
+    normalized = value.strip().lower()
+    return {
+        "manual restart from status bot": "ручной перезапуск из статус-бота",
+    }.get(normalized, value)
 
 
 def _docker_get(socket_path: Path, path: str) -> bytes:
