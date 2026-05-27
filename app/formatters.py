@@ -18,6 +18,7 @@ COMPONENT_RU = {
     "api readiness": "API: готовность и база",
     "admin stats": "админ-статистика",
     "activity 24h": "активность за 24 часа",
+    "service status": "статус сервисов",
     "docker": "Docker",
     "sqlite": "SQLite база",
     "pid": "PID-процесс",
@@ -41,6 +42,12 @@ METRIC_RU = {
     "critical_errors_recent": "последние критические ошибки",
     "notification_failures": "ошибок уведомлений",
     "reminders": "напоминания",
+    "service_status": "статус сервисов",
+    "service_status_version": "версия сервисов",
+    "service_status_database": "база данных сервисов",
+    "heartbeat_down_after_seconds": "таймаут heartbeat",
+    "last_errors_count": "последние ошибки",
+    "services": "сервисы",
 }
 
 
@@ -245,8 +252,37 @@ def _format_metric(key: str, value: Any) -> str:
     if isinstance(value, list):
         return f"- {label}: {len(value)}"
     if isinstance(value, dict):
+        if key == "services":
+            return _format_services_metric(value)
         return f"- {label}: {_compact_dict(value)}"
     return f"- {label}: {value}"
+
+
+def _format_services_metric(value: dict[str, Any]) -> str:
+    chunks: list[str] = []
+    for service_name in ("api", "bot", "worker"):
+        service = value.get(service_name)
+        if not isinstance(service, dict):
+            continue
+        raw_status = str(service.get("status", "unknown")).upper()
+        item = f"{_service_name_ru(service_name)}: {STATUS_RU.get(raw_status, raw_status)} ({raw_status})"
+        last_seen = service.get("last_seen_at") or service.get("last_seen")
+        if last_seen:
+            item += f", heartbeat {last_seen}"
+        if service.get("last_error"):
+            item += ", есть ошибка"
+        chunks.append(item)
+    if not chunks:
+        return "- сервисы: нет данных"
+    return "- сервисы: " + "; ".join(chunks)
+
+
+def _service_name_ru(name: str) -> str:
+    return {
+        "api": "API",
+        "bot": "Telegram-бот",
+        "worker": "worker",
+    }.get(name, name)
 
 
 def _format_duration(seconds: Any) -> str:

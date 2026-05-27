@@ -40,6 +40,22 @@ class RememberMeMonitor:
 
             if self.settings.rememberme_admin_token:
                 headers = {"X-Admin-Token": self.settings.rememberme_admin_token}
+                service_status = await self._get_json(
+                    client,
+                    f"{base_url}/admin/service-status",
+                    "service status",
+                    headers=headers,
+                    required=True,
+                )
+                components.append(self._service_status_component(service_status[0], service_status[1]))
+                if service_status[1]:
+                    metrics["service_status"] = service_status[1].get("status")
+                    metrics["service_status_version"] = service_status[1].get("version")
+                    metrics["service_status_database"] = service_status[1].get("db") or service_status[1].get("database")
+                    metrics["heartbeat_down_after_seconds"] = service_status[1].get("heartbeat_down_after_seconds")
+                    metrics["last_errors_count"] = service_status[1].get("last_errors_count")
+                    metrics["services"] = service_status[1].get("services")
+
                 stats = await self._get_json(client, f"{base_url}/admin/stats", "admin stats", headers=headers, required=False)
                 components.append(stats[0])
                 if stats[1]:
@@ -109,3 +125,22 @@ class RememberMeMonitor:
         status = Status.OK if payload_status == "ok" else Status.DEGRADED
         return ComponentStatus(name, status, payload_status, payload, required=required), payload
 
+    def _service_status_component(self, fallback: ComponentStatus, payload: dict | None) -> ComponentStatus:
+        if not payload:
+            return fallback
+        raw_status = str(payload.get("status", "")).lower()
+        if raw_status == "ok":
+            status = Status.OK
+        elif raw_status == "down":
+            status = Status.DOWN
+        elif raw_status == "degraded":
+            status = Status.DEGRADED
+        else:
+            status = Status.UNKNOWN
+        return ComponentStatus(
+            name="service status",
+            status=status,
+            message=raw_status or fallback.message,
+            details=payload,
+            required=True,
+        )

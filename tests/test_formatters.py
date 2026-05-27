@@ -1,4 +1,4 @@
-from app.formatters import format_alert, format_status_summary
+from app.formatters import format_alert, format_bot_details, format_status_summary
 from app.status import BotStatus, ComponentStatus, Status
 
 
@@ -40,3 +40,24 @@ def test_alert_is_verbose_and_russian():
     assert "Стало: работает (OK)" in text
     assert "Причина:" in text
     assert "пользователи:" in text
+
+
+def test_rememberme_service_status_metrics_are_formatted():
+    text = format_bot_details(
+        BotStatus(
+            "rememberme",
+            "RememberMe",
+            Status.OK,
+            [ComponentStatus("service status", Status.OK, "ok")],
+            {
+                "services": {
+                    "api": {"status": "ok", "last_seen_at": "2026-05-27T08:00:00Z"},
+                    "bot": {"status": "ok", "last_seen_at": "2026-05-27T08:00:00Z"},
+                    "worker": {"status": "ok", "last_seen_at": "2026-05-27T08:00:00Z"},
+                }
+            },
+        )
+    )
+
+    assert "статус сервисов" in text
+    assert "Telegram-бот" in text
