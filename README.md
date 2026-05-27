@@ -60,6 +60,15 @@ python -m app.main
 /opt/nz_tg_status_bot/scripts/write-container-snapshot.sh /opt/nz_tg_status_bot/data/container-status.json
 ```
 
+## Безопасный перезапуск целевых ботов
+
+Статус-бот не получает Docker socket. RememberMe/Инкубатор пишут restart request в host-папку,
+а VPS запускает allowlist-обработчик:
+
+```bash
+python3 /opt/nz_tg_status_bot/scripts/process-restart-requests.py
+```
+
 ## VPS deploy
 
 Деплой из GitHub Actions изолирован в отдельный каталог и отдельный Docker Compose project name: `nz_tg_status_bot`.
