@@ -9,7 +9,8 @@ if (Test-Path -LiteralPath $KeyPath) {
 } else {
     $KeyDir = Split-Path -Parent $KeyPath
     New-Item -ItemType Directory -Force -Path $KeyDir | Out-Null
-    ssh-keygen -t ed25519 -f $KeyPath -N "" -C "github-actions-nz-tg-status-bot"
+    Write-Host "Creating deploy key. When ssh-keygen asks for passphrase, press Enter twice."
+    ssh-keygen -t ed25519 -f $KeyPath -C "github-actions-nz-tg-status-bot"
 }
 
 Write-Host ""
@@ -18,4 +19,8 @@ Write-Host $KeyPath
 Write-Host ""
 Write-Host "Public key. Add this line to VPS ~/.ssh/authorized_keys for the deploy user:"
 Write-Host ""
-Get-Content -LiteralPath "$KeyPath.pub" -Raw
+$PublicKeyPath = "$KeyPath.pub"
+if (-not (Test-Path -LiteralPath $PublicKeyPath)) {
+    throw "Public key was not created: $PublicKeyPath"
+}
+Get-Content -LiteralPath $PublicKeyPath -Raw

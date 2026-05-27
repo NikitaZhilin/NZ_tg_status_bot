@@ -19,6 +19,8 @@ COMPONENT_RU = {
     "admin stats": "админ-статистика",
     "activity 24h": "активность за 24 часа",
     "service status": "статус сервисов",
+    "cpu": "процессор",
+    "ram": "оперативная память",
     "docker": "Docker",
     "sqlite": "SQLite база",
     "pid": "PID-процесс",
@@ -136,6 +138,52 @@ def format_errors(errors: list[dict[str, Any]], incubator_errors: list[dict[str,
     return "\n".join(lines)
 
 
+def format_history(bot_key: str, snapshots: list[dict[str, Any]], hours: int = 24) -> str:
+    title = _history_name(bot_key)
+    if not snapshots:
+        return f"{title}: истории за {hours} ч. пока нет."
+    total = len(snapshots)
+    ok_count = sum(1 for item in snapshots if item["overall_status"] == Status.OK.value)
+    uptime = round((ok_count / total) * 100, 1) if total else 0
+    transitions = _transitions(snapshots)
+    down_count = sum(1 for item in transitions if item["new"] == Status.DOWN.value)
+    spark = " ".join(_short_status(item["overall_status"]) for item in snapshots[-12:])
+    lines = [
+        f"{title}: история за {hours} ч.",
+        f"Проверок: {total}",
+        f"Uptime по проверкам: {uptime}%",
+        f"Переходов в DOWN: {down_count}",
+        f"График: {spark}",
+        "",
+        "Последние смены статуса:",
+    ]
+    if transitions:
+        for item in transitions[-10:]:
+            lines.append(f"- {item['created_at']}: {item['old']} -> {item['new']}")
+    else:
+        lines.append("- не было")
+    return "\n".join(lines)
+
+
+def format_report(history_by_bot: dict[str, list[dict[str, Any]]], hours: int = 24) -> str:
+    lines = [f"Отчёт за {hours} ч."]
+    for bot_key, snapshots in history_by_bot.items():
+        if not snapshots:
+            lines.append(f"- {_history_name(bot_key)}: нет данных")
+            continue
+        total = len(snapshots)
+        ok_count = sum(1 for item in snapshots if item["overall_status"] == Status.OK.value)
+        uptime = round((ok_count / total) * 100, 1) if total else 0
+        transitions = _transitions(snapshots)
+        down_count = sum(1 for item in transitions if item["new"] == Status.DOWN.value)
+        current = snapshots[-1]["overall_status"]
+        lines.append(
+            f"- {_history_name(bot_key)}: сейчас {STATUS_RU.get(current, current)} ({current}), "
+            f"uptime {uptime}%, DOWN {down_count}, проверок {total}"
+        )
+    return "\n".join(lines)
+
+
 def format_alert(name: str, old_status: str, new_status: str, item: BotStatus) -> str:
     failed = [
         component
@@ -191,6 +239,34 @@ def _format_bot_short(item: BotStatus) -> list[str]:
     if metrics.get("critical_errors_total") is not None:
         lines.append(f"Критические ошибки: {metrics['critical_errors_total']}")
     return lines
+
+
+def _history_name(bot_key: str) -> str:
+    return {
+        "rememberme": "RememberMe",
+        "incubator": "Инкубатор",
+        "server": "Сервер",
+    }.get(bot_key, bot_key)
+
+
+def _short_status(status: str) -> str:
+    return {
+        "OK": "OK",
+        "DEGRADED": "WARN",
+        "DOWN": "DOWN",
+        "UNKNOWN": "UNK",
+    }.get(status, status)
+
+
+def _transitions(snapshots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result = []
+    previous = None
+    for item in snapshots:
+        current = item["overall_status"]
+        if previous is not None and current != previous:
+            result.append({"old": previous, "new": current, "created_at": item["created_at"]})
+        previous = current
+    return result
 
 
 def _format_server_short(item: BotStatus) -> list[str]:

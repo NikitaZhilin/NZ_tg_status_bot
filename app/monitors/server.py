@@ -20,14 +20,32 @@ class ServerMonitor:
     async def check(self, *, force: bool = False) -> BotStatus:
         net_metrics = self._network_metrics()
         components: list[ComponentStatus] = []
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        ram_percent = psutil.virtual_memory().percent
         metrics: dict = {
             "hostname": platform.node(),
             "os": platform.platform(),
             "uptime_seconds": int(time.time() - psutil.boot_time()),
-            "cpu_percent": psutil.cpu_percent(interval=0.1),
-            "ram_percent": psutil.virtual_memory().percent,
+            "cpu_percent": cpu_percent,
+            "ram_percent": ram_percent,
             **net_metrics,
         }
+        components.append(
+            ComponentStatus(
+                "cpu",
+                Status.DEGRADED if cpu_percent >= self.settings.server_cpu_warn_percent else Status.OK,
+                f"{cpu_percent}% used",
+                required=False,
+            )
+        )
+        components.append(
+            ComponentStatus(
+                "ram",
+                Status.DEGRADED if ram_percent >= self.settings.server_ram_warn_percent else Status.OK,
+                f"{ram_percent}% used",
+                required=False,
+            )
+        )
 
         disk_metrics = []
         for path in self.settings.disk_path_list:
@@ -44,7 +62,7 @@ class ServerMonitor:
                     "percent": usage.percent,
                 }
             )
-            status = Status.OK if usage.percent < 90 else Status.DEGRADED
+            status = Status.OK if usage.percent < self.settings.server_disk_warn_percent else Status.DEGRADED
             components.append(ComponentStatus(f"disk {path}", status, f"{usage.percent}% used", required=False))
 
         metrics["disks"] = disk_metrics

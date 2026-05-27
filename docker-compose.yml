@@ -15,6 +15,10 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
       - ${INCUBATOR_DATABASE_HOST_PATH:-./data/missing-incubator.db}:${INCUBATOR_DATABASE_CONTAINER_PATH:-/external/incubator.db}:ro
+      - ${REMEMBERME_BACKUP_HOST_PATH:-./data/missing-rememberme-backups}:/external/backups/rememberme:ro
+      - ${INCUBATOR_BACKUP_HOST_PATH:-./data/missing-incubator-backups}:/external/backups/incubator:ro
+      - ${REMEMBERME_LOG_HOST_PATH:-./data/missing-rememberme-logs}:/external/logs/rememberme:ro
+      - ${INCUBATOR_LOG_HOST_PATH:-./data/missing-incubator-logs}:/external/logs/incubator:ro
     environment:
       INCUBATOR_DATABASE_PATH: ${INCUBATOR_DATABASE_CONTAINER_PATH:-/external/incubator.db}
       STATUS_DB_PATH: /app/data/status_bot.db

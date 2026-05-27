@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     send_periodic_summary: bool = Field(default=True, alias="SEND_PERIODIC_SUMMARY")
     summary_on_startup: bool = Field(default=True, alias="SUMMARY_ON_STARTUP")
     alert_cooldown_seconds: int = Field(default=600, alias="ALERT_COOLDOWN_SECONDS")
+    alert_failure_confirmations: int = Field(default=2, alias="ALERT_FAILURE_CONFIRMATIONS")
+    quiet_hours_enabled: bool = Field(default=False, alias="QUIET_HOURS_ENABLED")
+    quiet_hours_start: int = Field(default=23, alias="QUIET_HOURS_START")
+    quiet_hours_end: int = Field(default=8, alias="QUIET_HOURS_END")
     status_db_path: Path = Field(default=Path("data/status_bot.db"), alias="STATUS_DB_PATH")
 
     rememberme_enabled: bool = Field(default=True, alias="REMEMBERME_ENABLED")
@@ -44,6 +48,12 @@ class Settings(BaseSettings):
     incubator_systemd_unit: str = Field(default="", alias="INCUBATOR_SYSTEMD_UNIT")
 
     server_disk_paths: str = Field(default=".", alias="SERVER_DISK_PATHS")
+    server_cpu_warn_percent: float = Field(default=90.0, alias="SERVER_CPU_WARN_PERCENT")
+    server_ram_warn_percent: float = Field(default=85.0, alias="SERVER_RAM_WARN_PERCENT")
+    server_disk_warn_percent: float = Field(default=85.0, alias="SERVER_DISK_WARN_PERCENT")
+    backup_paths: str = Field(default="", alias="BACKUP_PATHS")
+    log_paths: str = Field(default="", alias="LOG_PATHS")
+    docker_socket_path: Path = Field(default=Path("/var/run/docker.sock"), alias="DOCKER_SOCKET_PATH")
     docker_check_enabled: bool = Field(default=False, alias="DOCKER_CHECK_ENABLED")
     systemd_check_enabled: bool = Field(default=False, alias="SYSTEMD_CHECK_ENABLED")
 
@@ -64,6 +74,14 @@ class Settings(BaseSettings):
     @property
     def rememberme_container_list(self) -> list[str]:
         return [item.strip() for item in self.rememberme_docker_containers.split(",") if item.strip()]
+
+    @property
+    def backup_path_list(self) -> list[Path]:
+        return [Path(item.strip()) for item in self.backup_paths.split(",") if item.strip()]
+
+    @property
+    def log_path_list(self) -> list[Path]:
+        return [Path(item.strip()) for item in self.log_paths.split(",") if item.strip()]
 
 
 def setup_logging(settings: Settings) -> None:

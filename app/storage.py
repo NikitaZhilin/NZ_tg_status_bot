@@ -53,6 +53,21 @@ class StatusStorage:
                     traceback TEXT,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+
+                CREATE TABLE IF NOT EXISTS alert_pending (
+                    bot_key TEXT PRIMARY KEY,
+                    old_status TEXT NOT NULL,
+                    target_status TEXT NOT NULL,
+                    count INTEGER NOT NULL,
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS alert_mutes (
+                    bot_key TEXT PRIMARY KEY,
+                    muted_until TEXT NOT NULL,
+                    reason TEXT
+                );
                 """
             )
 
@@ -147,8 +162,127 @@ class StatusStorage:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def snapshots_since(self, bot_key: str, since: datetime) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT bot_key, overall_status, payload_json, created_at
+                FROM status_snapshots
+                WHERE bot_key = ? AND created_at >= ?
+                ORDER BY id ASC
+                """,
+                (bot_key, since.isoformat()),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["payload"] = json.loads(item.pop("payload_json"))
+            except Exception:
+                item["payload"] = {}
+            result.append(item)
+        return result
+
+    def recent_snapshots(self, bot_key: str, limit: int = 50) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT bot_key, overall_status, payload_json, created_at
+                FROM status_snapshots
+                WHERE bot_key = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (bot_key, limit),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["payload"] = json.loads(item.pop("payload_json"))
+            except Exception:
+                item["payload"] = {}
+            result.append(item)
+        return list(reversed(result))
+
+    def upsert_pending_alert(self, bot_key: str, old_status: str, target_status: str) -> int:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT target_status, count FROM alert_pending WHERE bot_key = ?",
+                (bot_key,),
+            ).fetchone()
+            if row and row["target_status"] == target_status:
+                count = int(row["count"]) + 1
+                conn.execute(
+                    """
+                    UPDATE alert_pending
+                    SET count = ?, last_seen_at = ?
+                    WHERE bot_key = ?
+                    """,
+                    (count, now, bot_key),
+                )
+                return count
+            conn.execute(
+                """
+                INSERT INTO alert_pending (bot_key, old_status, target_status, count, first_seen_at, last_seen_at)
+                VALUES (?, ?, ?, 1, ?, ?)
+                ON CONFLICT(bot_key) DO UPDATE SET
+                    old_status = excluded.old_status,
+                    target_status = excluded.target_status,
+                    count = 1,
+                    first_seen_at = excluded.first_seen_at,
+                    last_seen_at = excluded.last_seen_at
+                """,
+                (bot_key, old_status, target_status, now, now),
+            )
+            return 1
+
+    def pending_alert(self, bot_key: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM alert_pending WHERE bot_key = ?",
+                (bot_key,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def clear_pending_alert(self, bot_key: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM alert_pending WHERE bot_key = ?", (bot_key,))
+
+    def mute_alerts(self, bot_key: str, seconds: int, reason: str = "") -> None:
+        muted_until = (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO alert_mutes (bot_key, muted_until, reason)
+                VALUES (?, ?, ?)
+                ON CONFLICT(bot_key) DO UPDATE SET
+                    muted_until = excluded.muted_until,
+                    reason = excluded.reason
+                """,
+                (bot_key, muted_until, reason),
+            )
+
+    def muted_until(self, bot_key: str) -> datetime | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT muted_until FROM alert_mutes WHERE bot_key = ?",
+                (bot_key,),
+            ).fetchone()
+        if not row:
+            return None
+        try:
+            value = datetime.fromisoformat(str(row["muted_until"]))
+        except ValueError:
+            return None
+        if value <= datetime.now(timezone.utc):
+            with self._connect() as conn:
+                conn.execute("DELETE FROM alert_mutes WHERE bot_key = ?", (bot_key,))
+            return None
+        return value
+
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
         return conn
-

@@ -26,7 +26,8 @@ if ([string]::IsNullOrWhiteSpace($SshKeyPath)) {
 if ($GenerateDeployKey -and -not (Test-Path -LiteralPath $SshKeyPath)) {
     $KeyDir = Split-Path -Parent $SshKeyPath
     New-Item -ItemType Directory -Force -Path $KeyDir | Out-Null
-    ssh-keygen -t ed25519 -f $SshKeyPath -N "" -C "github-actions-nz-tg-status-bot"
+    Write-Host "Creating deploy key. When ssh-keygen asks for passphrase, press Enter twice."
+    ssh-keygen -t ed25519 -f $SshKeyPath -C "github-actions-nz-tg-status-bot"
 }
 
 if ([string]::IsNullOrWhiteSpace($SshKeyPath) -or -not (Test-Path -LiteralPath $SshKeyPath)) {
