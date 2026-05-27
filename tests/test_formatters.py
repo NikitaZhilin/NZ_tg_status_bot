@@ -15,10 +15,10 @@ def test_summary_includes_user_metrics():
         ]
     )
 
-    assert "RememberMe: OK" in text
-    assert "10 total" in text
-    assert "3 active 24h" in text
-    assert "Version: 1.0" in text
+    assert "RememberMe: работает (OK)" in text
+    assert "всего 10" in text
+    assert "активных за 24 часа 3" in text
+    assert "Версия: 1.0" in text
 
 
 def test_alert_is_verbose_and_russian():

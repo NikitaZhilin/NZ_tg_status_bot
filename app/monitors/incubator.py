@@ -27,7 +27,8 @@ class IncubatorMonitor:
         components.append(db_component)
         metrics.update(db_metrics)
 
-        components.append(check_pid_file(self.settings.incubator_pid_file, required=False))
+        if self.settings.incubator_pid_file:
+            components.append(check_pid_file(self.settings.incubator_pid_file, required=False))
         components.append(
             check_docker_container(
                 self.settings.incubator_docker_container,
