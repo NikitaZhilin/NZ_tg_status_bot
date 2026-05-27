@@ -16,6 +16,7 @@ from app.diagnostics import (
     format_disk_details,
     format_log_tail,
     format_logs,
+    format_restart_history,
     format_top_processes,
 )
 from app.formatters import (
@@ -65,6 +66,7 @@ def status_inline_keyboard() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="Перезапустить RememberMe", callback_data="restart_ask:rememberme"),
+                InlineKeyboardButton(text="История перезапусков", callback_data="refresh:restart_history"),
             ],
         ]
     )
@@ -216,6 +218,14 @@ async def containers(message: Message, settings: Settings) -> None:
     await message.answer(format_containers(settings))
 
 
+@router.message(Command("restart_history"))
+async def restart_history(message: Message, settings: Settings) -> None:
+    if not is_admin(message, settings):
+        await message.answer("Доступ запрещен.")
+        return
+    await message.answer(format_restart_history(settings), reply_markup=status_inline_keyboard())
+
+
 @router.message(Command("logs"))
 async def logs(message: Message, settings: Settings) -> None:
     if not is_admin(message, settings):
@@ -296,6 +306,8 @@ async def refresh_callback(
         text = _report_text(storage)
     elif action == "report7d":
         text = _report_text(storage, hours=24 * 7)
+    elif action == "restart_history":
+        text = format_restart_history(settings)
     else:
         text = format_status_summary(snapshot.bots, snapshot.server)
     if callback.message:

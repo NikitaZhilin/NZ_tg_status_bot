@@ -171,6 +171,55 @@ def format_containers(settings: Settings) -> str:
     return "\n".join(lines)
 
 
+def format_restart_history(settings: Settings) -> str:
+    paths = settings.restart_request_path_list
+    if not paths:
+        return "История перезапусков: пути не настроены. Укажи RESTART_REQUEST_PATHS в .env статус-бота."
+
+    entries = []
+    missing_paths = []
+    for path in paths:
+        bot_name = _restart_bot_name(path)
+        if not path.exists():
+            missing_paths.append(str(path))
+            continue
+        entries.extend(_restart_entries(path, bot_name, "в очереди", "*.json"))
+        entries.extend(_restart_entries(path / "processed", bot_name, "обработано", "*.json"))
+        entries.extend(_restart_entries(path / "failed", bot_name, "ошибка", "*.json"))
+
+    entries.sort(key=lambda item: item["mtime"], reverse=True)
+    lines = ["История перезапусков:"]
+    if missing_paths:
+        lines.append("Недоступные каталоги:")
+        for path in missing_paths[:4]:
+            lines.append(f"- {path}")
+    if not entries:
+        lines.append("- записей нет")
+        return "\n".join(lines)
+
+    for entry in entries[: max(settings.restart_history_limit, 1)]:
+        payload = entry["payload"]
+        created_at = _parse_dt(
+            payload.get("requested_at")
+            or payload.get("created_at")
+            or payload.get("processed_at")
+            or payload.get("failed_at")
+        )
+        if created_at is None:
+            created_at = datetime.fromtimestamp(entry["mtime"], timezone.utc)
+        operation_id = payload.get("operation_id") or _clean_restart_operation_id(entry["path"].stem)
+        target = payload.get("target") or "-"
+        requested_by = payload.get("requested_by") or "-"
+        reason = payload.get("reason") or ""
+        lines.append(
+            f"- {created_at.astimezone().strftime('%d.%m.%Y %H:%M:%S')} "
+            f"{entry['bot']}: {entry['state']}, target={target}, id={operation_id}, от={requested_by}"
+        )
+        if reason:
+            lines.append(f"  причина: {reason}")
+    return _telegram_safe_text("\n".join(lines))
+
+
 def _log_path_for_source(settings: Settings, source: str) -> Path | None:
     paths = settings.log_path_list
     if source == "status":
@@ -180,6 +229,45 @@ def _log_path_for_source(settings: Settings, source: str) -> Path | None:
     if source == "incubator":
         return next((path for path in paths if "incubator" in str(path).lower()), None)
     return None
+
+
+def _restart_entries(path: Path, bot_name: str, state: str, pattern: str) -> list[dict]:
+    if not path.exists():
+        return []
+    entries = []
+    for item in path.glob(pattern):
+        if not item.is_file():
+            continue
+        try:
+            payload = json.loads(item.read_text(encoding="utf-8"))
+        except Exception:
+            payload = {}
+        entries.append(
+            {
+                "bot": bot_name,
+                "state": state,
+                "path": item,
+                "mtime": item.stat().st_mtime,
+                "payload": payload,
+            }
+        )
+    return entries
+
+
+def _restart_bot_name(path: Path) -> str:
+    value = str(path).lower()
+    if "rememberme" in value:
+        return "RememberMe"
+    if "incubator" in value:
+        return "Инкубатор"
+    return path.name
+
+
+def _clean_restart_operation_id(value: str) -> str:
+    parts = value.split("-", 2)
+    if len(parts) == 3 and parts[0].isdigit():
+        return parts[2]
+    return value
 
 
 def _read_tail(path: Path, max_bytes: int) -> str:

@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     docker_check_enabled: bool = Field(default=False, alias="DOCKER_CHECK_ENABLED")
     systemd_check_enabled: bool = Field(default=False, alias="SYSTEMD_CHECK_ENABLED")
     restart_timeout_seconds: float = Field(default=10.0, alias="RESTART_TIMEOUT_SECONDS")
+    restart_request_paths: str = Field(
+        default="/external/restarts/rememberme,/external/restarts/incubator",
+        alias="RESTART_REQUEST_PATHS",
+    )
+    restart_history_limit: int = Field(default=10, alias="RESTART_HISTORY_LIMIT")
 
     @property
     def admin_id_set(self) -> frozenset[int]:
@@ -100,6 +105,10 @@ class Settings(BaseSettings):
     @property
     def log_path_list(self) -> list[Path]:
         return [Path(item.strip()) for item in self.log_paths.split(",") if item.strip()]
+
+    @property
+    def restart_request_path_list(self) -> list[Path]:
+        return [Path(item.strip()) for item in self.restart_request_paths.split(",") if item.strip()]
 
 
 def setup_logging(settings: Settings) -> None:
