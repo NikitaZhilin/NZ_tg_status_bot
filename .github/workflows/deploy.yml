@@ -13,16 +13,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      VPS_HOST: ${{ secrets.VPS_HOST }}
-      VPS_USER: ${{ secrets.VPS_USER }}
-      VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
-      VPS_APP_DIR: ${{ secrets.VPS_APP_DIR || '/opt/nz_tg_status_bot' }}
-      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-      ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
-      REMEMBERME_API_BASE_URL: ${{ secrets.REMEMBERME_API_BASE_URL }}
-      REMEMBERME_ADMIN_TOKEN: ${{ secrets.REMEMBERME_ADMIN_TOKEN }}
-      INCUBATOR_DATABASE_PATH: ${{ secrets.INCUBATOR_DATABASE_PATH }}
-      INCUBATOR_PID_FILE: ${{ secrets.INCUBATOR_PID_FILE }}
+      VPS_HOST: 72.56.116.237
+      VPS_USER: root
+      VPS_PORT: 22
+      VPS_APP_DIR: /opt/nz_tg_status_bot
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,14 +24,7 @@ jobs:
       - name: Check deployment secrets
         run: |
           required=(
-            VPS_HOST
-            VPS_USER
             VPS_SSH_KEY
-            BOT_TOKEN
-            ADMIN_IDS
-            REMEMBERME_API_BASE_URL
-            REMEMBERME_ADMIN_TOKEN
-            INCUBATOR_DATABASE_PATH
           )
           missing=0
           for name in "${required[@]}"; do
@@ -77,35 +64,10 @@ jobs:
             -e "ssh -p $VPS_PORT" \
             ./ "$VPS_USER@$VPS_HOST:$VPS_APP_DIR/"
 
-      - name: Write environment
+      - name: Check remote environment
         if: env.DEPLOY_READY == 'true'
         run: |
-          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "cat > '$VPS_APP_DIR/.env' <<'EOF'
-          BOT_TOKEN=$BOT_TOKEN
-          ADMIN_IDS=$ADMIN_IDS
-          BOT_TIMEZONE=Europe/Moscow
-          LOG_LEVEL=INFO
-          CHECK_INTERVAL_SECONDS=60
-          ALERT_COOLDOWN_SECONDS=600
-          STATUS_DB_PATH=/app/data/status_bot.db
-          REMEMBERME_ENABLED=true
-          REMEMBERME_NAME=RememberMe
-          REMEMBERME_API_BASE_URL=$REMEMBERME_API_BASE_URL
-          REMEMBERME_ADMIN_TOKEN=$REMEMBERME_ADMIN_TOKEN
-          REMEMBERME_TIMEOUT_SECONDS=5
-          REMEMBERME_REQUIRED=true
-          INCUBATOR_ENABLED=true
-          INCUBATOR_NAME=Incubator
-          INCUBATOR_DATABASE_PATH=/external/incubator.db
-          INCUBATOR_PID_FILE=$INCUBATOR_PID_FILE
-          INCUBATOR_REQUIRED=true
-          SERVER_DISK_PATHS=/app/data
-          DOCKER_CHECK_ENABLED=false
-          SYSTEMD_CHECK_ENABLED=false
-          INCUBATOR_DATABASE_HOST_PATH=$INCUBATOR_DATABASE_PATH
-          INCUBATOR_DATABASE_CONTAINER_PATH=/external/incubator.db
-          EOF
-          chmod 600 '$VPS_APP_DIR/.env'"
+          ssh -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" "test -f '$VPS_APP_DIR/.env'"
 
       - name: Deploy compose project
         if: env.DEPLOY_READY == 'true'
