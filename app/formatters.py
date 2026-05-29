@@ -387,6 +387,17 @@ def _bot_name_ru(name: str) -> str:
 
 
 def _message_ru(message: str) -> str:
+    if message.startswith("newest "):
+        return (
+            message.replace("newest ", "последний backup ", 1)
+            .replace("h ago", " ч. назад")
+            .replace("total", "всего")
+        )
+    if message.startswith("total "):
+        return message.replace("total ", "всего ", 1)
+    if message.endswith("% used"):
+        return message.replace("% used", "% занято")
+
     replacements = {
         "ok": "успешно",
         "Database is readable": "база доступна для чтения",

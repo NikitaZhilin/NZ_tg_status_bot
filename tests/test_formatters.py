@@ -87,3 +87,24 @@ def test_summary_explains_server_degraded_reason():
 
     assert "Сервер: работает с проблемами (DEGRADED)" in text
     assert "Причина: резервные копии /external/backups/incubator — backup-файлов нет" in text
+
+
+def test_summary_localizes_old_backup_reason():
+    text = format_status_summary(
+        [],
+        BotStatus(
+            "server",
+            "Server",
+            Status.DEGRADED,
+            [
+                ComponentStatus(
+                    "backup /external/backups/rememberme",
+                    Status.DEGRADED,
+                    "newest 88.7h ago, total 0 MB",
+                ),
+            ],
+            {"cpu_percent": 0.0, "ram_percent": 74.8, "uptime_seconds": 144000},
+        ),
+    )
+
+    assert "Причина: резервные копии /external/backups/rememberme — последний backup 88.7 ч. назад, всего 0 MB" in text
