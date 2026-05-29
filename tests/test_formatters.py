@@ -61,3 +61,29 @@ def test_rememberme_service_status_metrics_are_formatted():
 
     assert "статус сервисов" in text
     assert "Telegram-бот" in text
+
+
+def test_summary_explains_server_degraded_reason():
+    text = format_status_summary(
+        [],
+        BotStatus(
+            "server",
+            "Server",
+            Status.DEGRADED,
+            [
+                ComponentStatus("cpu", Status.OK, "3.0% used"),
+                ComponentStatus("backup /external/backups/incubator", Status.DEGRADED, "no backup files"),
+            ],
+            {
+                "cpu_percent": 3.0,
+                "ram_percent": 74.8,
+                "net_recv_kbps": 122.8,
+                "net_sent_kbps": 49.4,
+                "uptime_seconds": 144000,
+                "disks": [{"path": "/app/data", "free_gb": 5.21, "percent": 61.2}],
+            },
+        ),
+    )
+
+    assert "Сервер: работает с проблемами (DEGRADED)" in text
+    assert "Причина: резервные копии /external/backups/incubator — backup-файлов нет" in text

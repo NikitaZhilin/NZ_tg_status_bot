@@ -340,6 +340,29 @@ def _format_server_short(item: BotStatus) -> list[str]:
     if disks:
         first = disks[0]
         lines.append(f"Диск: свободно {first.get('free_gb')} GB, занято {first.get('percent')}%")
+    lines.extend(_format_problem_summary(item))
+    return lines
+
+
+def _format_problem_summary(item: BotStatus) -> list[str]:
+    failed = [
+        component
+        for component in item.components
+        if component.status in {Status.DOWN, Status.DEGRADED, Status.UNKNOWN}
+    ]
+    if not failed:
+        return []
+    if len(failed) == 1:
+        component = failed[0]
+        message = f" — {_message_ru(component.message)}" if component.message else ""
+        return [f"Причина: {_component_name_ru(component.name)}{message}"]
+
+    lines = ["Причины:"]
+    for component in failed[:4]:
+        message = f" — {_message_ru(component.message)}" if component.message else ""
+        lines.append(f"- {_component_name_ru(component.name)}: {_status_label(component.status)}{message}")
+    if len(failed) > 4:
+        lines.append(f"- ещё проблемных проверок: {len(failed) - 4}")
     return lines
 
 
@@ -349,7 +372,7 @@ def _status_label(status: Status) -> str:
 
 def _component_name_ru(name: str) -> str:
     if name.startswith("backup "):
-        return "backup " + name.removeprefix("backup ")
+        return "резервные копии " + name.removeprefix("backup ")
     if name.startswith("logs "):
         return "логи " + name.removeprefix("logs ")
     if name.startswith("disk "):
